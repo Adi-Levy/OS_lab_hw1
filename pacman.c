@@ -35,6 +35,7 @@ struct file_operations my_fops = {
 
 typedef struct my_private_data {
     char buffer[3030];
+	int points;
 }*MyPrivateData; 
 
 int init_module(void)
@@ -83,6 +84,7 @@ int my_open(struct inode *inode, struct file *filp)
     for(i = 0; i < 3030; i++) {
         mpd->buffer[i] = NOTREADY;
     }
+	mpd->points = 0
     filp->private_data = mpd;
 
     return 0;
