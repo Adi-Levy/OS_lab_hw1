@@ -1,0 +1,8 @@
+#!/bin/bash
+
+rm -f /dev/pacman
+rmmod pacman
+rm -f pacman.o
+make
+insmod ./pacman.o
+mknod /dev/pacman c 254 0
