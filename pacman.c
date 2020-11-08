@@ -199,13 +199,24 @@ ssize_t my_read(struct file *filp, char *buf, size_t count, loff_t *f_pos)
     return 0; 
 }
 
-void PrintArgString(unsigned long arg)
+int getArgString(unsigned long arg, char* buffer, int buffer_size)
 {
-    printk("!!!!!!!");
-    char* c = (char*)arg;
+	//two last arguments are return
+ 
+    char* c = (char*)arg; // cast argument to pointer 
+	
     int str_len = strnlen_user(c,PATH_MAX);
+	if(str_len < 0)
+		return -EFAULT;
+	
     char* k_string_buffer = (char*)kmalloc(sizeof(char)*str_len + 1, GFP_KERNEL); 
-    copy_from_user(k_string_buffer, c, str_len);
+	if (k_string_buffer == NULL)
+		return -ENOMEM;
+	
+    if(copy_from_user(k_string_buffer, c, str_len))
+		return -EFAULT;
+	
+	// printing results to kernel:
     char* k = k_string_buffer;
     int i = 0;
     for(;i < str_len; i++)
@@ -213,18 +224,28 @@ void PrintArgString(unsigned long arg)
         printk("%c", k[i]);
     }
     printk("\n");
+	
+	// returning result:
+	buffer = k_string_buffer;
+	buffer_size = str_len + 1;
 }
+	
+
 
 int my_ioctl(struct inode *inode, struct file *filp, unsigned int cmd, unsigned long arg)
 {
     switch(cmd)
     {
     case NEWGAME:
-        printk("!!!!!!!!!%lu\n", arg);
-        PrintArgString(arg);
-	//
-	// handle 
-	//
+		char* buffer;
+		int buffer_size;
+        getArgString(arg, buffer, buffer_size);
+		// path is now in buffer
+		
+		struct file* filp = file_open(buffer);
+		// map file opened?
+		// (have to be finished, fill the private data of the file)
+
 	break;
     case GAMESTAT:
 	//
