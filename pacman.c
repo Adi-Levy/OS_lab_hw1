@@ -14,6 +14,7 @@
 #include <asm/segment.h>
 #include <linux/kdev_t.h>
 #include <linux/slab.h>
+#include <linux/limits.h>
 
 #include "pacman.h"
 
@@ -64,6 +65,7 @@ int init_module(void)
     }
 
     m_list = NULL;
+    printk("!!!!!! m_list is NULL\n");
 
     return 0;
 }
@@ -92,6 +94,7 @@ int my_open(struct inode *inode, struct file *filp)
     MinorList iter = m_list;
     while(iter != NULL)
     {
+        printk("!!!!!!!! in minor list loop in open\n");
         if(iter->minor == minor)
         {
             // minor already has an open file so we use it's private data with buffer
@@ -106,18 +109,20 @@ int my_open(struct inode *inode, struct file *filp)
 
         iter = iter->next;
     }
-
+    
     // minor does not exist yet
     // allocate private data with buffer:
     MyPrivateData mpd = (MyPrivateData)kmalloc(sizeof(struct my_private_data),GFP_KERNEL);
     if(mpd == NULL) {
         return -ENOMEM;
     }
+    
 
     int i;
     for(i = 0; i < 3030; i++) {
         mpd->buffer[i] = NOTREADY;
     }
+    
     mpd->points = 0;
     filp->private_data = mpd;
 
@@ -125,12 +130,22 @@ int my_open(struct inode *inode, struct file *filp)
     if(new_minor == NULL) {
         return -EFAULT;
     }
+    printk("!!!!!!! got to here\n");
     new_minor->private_data = mpd;
     new_minor->ref_count = 1;
     new_minor->minor = minor;
     new_minor->next = NULL;
-
-    iter->next = new_minor;
+    
+    if(iter == NULL) 
+    {
+        m_list = new_minor;
+    }
+    else
+    {
+        iter->next = new_minor;
+    }
+    
+    printk("!!!!!!! Added new private data\n");
     /// TODO: handle extra errors with return -EFAULT
 
     return 0;
@@ -159,7 +174,7 @@ int my_release(struct inode *inode, struct file *filp)
                 {
                     iter_prev->next = iter->next;
                 }
-                kfree(iter)
+                kfree(iter);
                 kfree(filp->private_data);
             }
             else
@@ -186,12 +201,18 @@ ssize_t my_read(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 
 void PrintArgString(unsigned long arg)
 {
-    char* c = char*(arg);
-    while( c != 0)
+    printk("!!!!!!!");
+    char* c = (char*)arg;
+    int str_len = strnlen_user(c,PATH_MAX);
+    char* k_string_buffer = (char*)kmalloc(sizeof(char)*str_len + 1, GFP_KERNEL); 
+    copy_from_user(k_string_buffer, c, str_len);
+    char* k = k_string_buffer;
+    int i = 0;
+    for(;i < str_len; i++)
     {
-        printk("%c", c);
-        printk("\n");
+        printk("%c", k[i]);
     }
+    printk("\n");
 }
 
 int my_ioctl(struct inode *inode, struct file *filp, unsigned int cmd, unsigned long arg)
@@ -199,6 +220,7 @@ int my_ioctl(struct inode *inode, struct file *filp, unsigned int cmd, unsigned 
     switch(cmd)
     {
     case NEWGAME:
+        printk("!!!!!!!!!%lu\n", arg);
         PrintArgString(arg);
 	//
 	// handle 
