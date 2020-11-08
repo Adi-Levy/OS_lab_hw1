@@ -23,8 +23,6 @@
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Anonymous");
 
-/* globals */
-int my_major = 0; /* will hold the major # of my device driver */
 
 struct file_operations my_fops = {
     .open = my_open,
@@ -33,10 +31,26 @@ struct file_operations my_fops = {
     .ioctl = my_ioctl
 };
 
+
 typedef struct my_private_data {
     char buffer[3030];
 	int points;
-}*MyPrivateData; 
+}*MyPrivateData;
+
+
+typedef struct minor_list{
+    int minor;
+    int ref_count;
+    MyPrivateData private_data;
+
+    struct minor_list* next;
+}*MinorList;
+
+
+/* globals */
+int my_major = 0; /* will hold the major # of my device driver */
+MinorList m_list;
+
 
 int init_module(void)
 {
@@ -49,9 +63,8 @@ int init_module(void)
 	return my_major;
     }
 
-    //
-    // do_init();
-    //
+    m_list = NULL;
+
     return 0;
 }
 
@@ -60,6 +73,7 @@ void cleanup_module(void)
 {
     unregister_chrdev(my_major, MY_DEVICE);
 
+    // TODO: clean up list
     //
     // do clean_up();
     //
@@ -74,18 +88,50 @@ int my_open(struct inode *inode, struct file *filp)
     int minor = MINOR(inode->i_rdev);
     printk("!!!!!!!!!!!minor is: %d\n", minor);
 
-    /// TODO: handle ref counting
-    /// TODO: handle extra errors with return -EFAULT
-    MyPrivateData mpd = (MyPrivateData)kmalloc(sizeof(struct my_private_data),GFP_KERNEL); 
+    //add minor to the list:
+    MinorList iter = m_list;
+    while(iter != NULL)
+    {
+        if(iter->minor == minor)
+        {
+            // minor already has an open file so we use it's private data with buffer
+            iter->ref_count++;
+            filp->private_data = iter->private_data;
+            return 0;
+        }
+        if(iter->next == NULL)
+        {
+            break;
+        }
+
+        iter = iter->next;
+    }
+
+    // minor does not exist yet
+    // allocate private data with buffer:
+    MyPrivateData mpd = (MyPrivateData)kmalloc(sizeof(struct my_private_data),GFP_KERNEL);
     if(mpd == NULL) {
         return -ENOMEM;
     }
+
     int i;
     for(i = 0; i < 3030; i++) {
         mpd->buffer[i] = NOTREADY;
     }
-	mpd->points = 0
+    mpd->points = 0;
     filp->private_data = mpd;
+
+    MinorList new_minor = (MinorList)kmalloc(sizeof(struct minor_list),GFP_KERNEL);
+    if(new_minor == NULL) {
+        return -EFAULT;
+    }
+    new_minor->private_data = mpd;
+    new_minor->ref_count = 1;
+    new_minor->minor = minor;
+    new_minor->next = NULL;
+
+    iter->next = new_minor;
+    /// TODO: handle extra errors with return -EFAULT
 
     return 0;
 }
@@ -94,7 +140,39 @@ int my_open(struct inode *inode, struct file *filp)
 int my_release(struct inode *inode, struct file *filp)
 {
     // handle read closing
-    kfree(filp->private_data);
+    int minor = MINOR(inode->i_rdev);
+
+    MinorList iter = m_list;
+    MinorList iter_prev = NULL;
+    while(iter != NULL)
+    {
+        if(iter->minor == minor)
+        {
+            if(iter->ref_count == 1)
+            {
+                // this is the only file controlling this minor, therefore we can delete it
+                if(iter_prev == NULL)
+                { //deleting the first one
+                    m_list = iter->next;
+                }
+                else
+                {
+                    iter_prev->next = iter->next;
+                }
+                kfree(iter)
+                kfree(filp->private_data);
+            }
+            else
+            {
+                iter->ref_count--;
+
+            }
+
+            return 0;
+        }
+        iter_prev = iter;
+        iter = iter->next;
+    }
     return 0;
 }
 
@@ -106,11 +184,22 @@ ssize_t my_read(struct file *filp, char *buf, size_t count, loff_t *f_pos)
     return 0; 
 }
 
+void PrintArgString(unsigned long arg)
+{
+    char* c = char*(arg);
+    while( c != 0)
+    {
+        printk("%c", c);
+        printk("\n");
+    }
+}
+
 int my_ioctl(struct inode *inode, struct file *filp, unsigned int cmd, unsigned long arg)
 {
     switch(cmd)
     {
     case NEWGAME:
+        PrintArgString(arg);
 	//
 	// handle 
 	//
