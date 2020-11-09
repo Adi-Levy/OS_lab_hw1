@@ -199,12 +199,12 @@ ssize_t my_read(struct file *filp, char *buf, size_t count, loff_t *f_pos)
     return 0; 
 }
 
-int getArgString(unsigned long arg, char* buffer, int buffer_size)
+int getArgString(unsigned long arg, char* buffer, int *buffer_size)
 {
 	//two last arguments are return
  
     char* c = (char*)arg; // cast argument to pointer 
-	
+    
     int str_len = strnlen_user(c,PATH_MAX);
 	if(str_len < 0)
 		return -EFAULT;
@@ -227,39 +227,25 @@ int getArgString(unsigned long arg, char* buffer, int buffer_size)
 	
 	// returning result:
 	buffer = k_string_buffer;
-	buffer_size = str_len + 1;
-}
-	
-
-
-int my_ioctl(struct inode *inode, struct file *filp, unsigned int cmd, unsigned long arg)
-{
-    switch(cmd)
-    {
-    case NEWGAME:
-		char* buffer;
-		int buffer_size;
-        getArgString(arg, buffer, buffer_size);
-		// path is now in buffer
-		
-		struct file* filp = file_open(buffer);
-		// map file opened?
-		// (have to be finished, fill the private data of the file)
-
-	break;
-    case GAMESTAT:
-	//
-	// handle 
-	//
-	break;
-
-    default:
-	return -ENOTTY;
-    }
+	*buffer_size = str_len + 1;
 
     return 0;
 }
+	
 
+int file_read(struct file *file, unsigned long long offset, unsigned char *data, unsigned int size)
+{
+    mm_segment_t oldfs;
+    int ret;
+
+    oldfs = get_fs();
+    set_fs(get_ds());
+
+    ret = kernel_read(file, offset, data, size);
+
+    set_fs(oldfs);
+    return ret;
+}
 struct file *file_open(const char *path)
 {
     printk("!!!!!!!!!!!!!in file_open\n");
@@ -279,22 +265,66 @@ struct file *file_open(const char *path)
     return filp;
 }
 
+int my_ioctl(struct inode *inode, struct file *filp, unsigned int cmd, unsigned long arg)
+{
+    printk("%d\n", *filp);
+    switch(cmd)
+    {
+    case NEWGAME:
+		//MyPrivateData pd = (MyPrivateData)filp->private_data;
+        if(arg == 0) 
+        {
+            //pd->points = 0;
+            return 0;
+        }
+        char* buffer;
+		int buffer_size;
+        
+        int res = getArgString(arg, buffer, &buffer_size);
+        if(res < 0) 
+        {
+            return res;
+        }
+
+		// path is now in buffer
+
+		struct file *map_filp = file_open(buffer);
+		// map file opened?
+        if(map_filp == NULL) 
+        {
+            //path does not exist
+            return -ENOENT;
+        }
+		// (have to be finished, fill the private data of the file)
+        /*file_read(map_filp, 0, pd->buffer,(size_t)3030);
+        int i = 0;
+        for(; i < 30; i++)
+        {
+            printk("!!!!!!!!");
+            int j = 0;
+            for(; j < 101; j++)
+            {
+                printk("%c", pd->buffer[i+j]);
+            }
+        }*/
+	break;
+    case GAMESTAT:
+	//
+	// handle 
+	//
+	break;
+
+    default:
+	return -ENOTTY;
+    }
+
+    return 0;
+}
+
+
 void file_close(struct file *file)
 {
     filp_close(file, NULL);
 }
 
 
-int file_read(struct file *file, unsigned long long offset, unsigned char *data, unsigned int size)
-{
-    mm_segment_t oldfs;
-    int ret;
-
-    oldfs = get_fs();
-    set_fs(get_ds());
-
-    ret = kernel_read(file, offset, data, size);
-
-    set_fs(oldfs);
-    return ret;
-}
