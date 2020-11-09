@@ -15,6 +15,7 @@
 #include <linux/kdev_t.h>
 #include <linux/slab.h>
 #include <linux/limits.h>
+#include <stdbool.h>
 
 #include "pacman.h"
 
@@ -199,7 +200,21 @@ ssize_t my_read(struct file *filp, char *buf, size_t count, loff_t *f_pos)
     return 0; 
 }
 
-int getArgString(unsigned long arg, char* buffer, int *buffer_size)
+bool game_is_over(MyPrivateData pd) 
+{
+    char* buffer = pd->buffer;
+    int i = 0;
+    for(; i < 3030; i++) 
+    {
+        if(buffer[i] == '*')
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+int getArgString(unsigned long arg, char** buffer, int *buffer_size)
 {
 	//two last arguments are return
  
@@ -209,25 +224,18 @@ int getArgString(unsigned long arg, char* buffer, int *buffer_size)
 	if(str_len < 0)
 		return -EFAULT;
 	
-    char* k_string_buffer = (char*)kmalloc(sizeof(char)*str_len + 1, GFP_KERNEL); 
-	if (k_string_buffer == NULL)
-		return -ENOMEM;
-	
-    if(copy_from_user(k_string_buffer, c, str_len))
-		return -EFAULT;
-	
-	// printing results to kernel:
-    char* k = k_string_buffer;
-    int i = 0;
-    for(;i < str_len; i++)
+    *buffer = (char*)kmalloc(sizeof(char)*str_len, GFP_KERNEL); 
+	if (*buffer == NULL)
     {
-        printk("%c", k[i]);
+		return -ENOMEM;
     }
-    printk("\n");
-	
-	// returning result:
-	buffer = k_string_buffer;
-	*buffer_size = str_len + 1;
+
+    if(copy_from_user(*buffer, c, str_len) < 0)
+	{
+    	return -EFAULT;
+    }
+
+	*buffer_size = str_len;
 
     return 0;
 }
@@ -260,71 +268,79 @@ struct file *file_open(const char *path)
     set_fs(oldfs);
     if (IS_ERR(filp)) {
         err = PTR_ERR(filp);
+        printk("!!!!!! got to here\n");
         return NULL;
     }
     return filp;
 }
 
+void file_close(struct file *file)
+{
+    filp_close(file, NULL);
+}
+
 int my_ioctl(struct inode *inode, struct file *filp, unsigned int cmd, unsigned long arg)
 {
-    printk("%d\n", *filp);
+    MyPrivateData pd = (MyPrivateData)(filp->private_data);
+    struct file *map_filp;
+
     switch(cmd)
     {
     case NEWGAME:
-		//MyPrivateData pd = (MyPrivateData)filp->private_data;
+        //printk("private_data buffer[0] = %c\n", pd->buffer[0]);
+        pd->points = 0;
         if(arg == 0) 
         {
-            //pd->points = 0;
             return 0;
         }
-        char* buffer;
-		int buffer_size;
         
-        int res = getArgString(arg, buffer, &buffer_size);
+        char* buffer = NULL;
+		int buffer_size;
+        int res = getArgString(arg, &buffer, &buffer_size);
         if(res < 0) 
         {
             return res;
         }
-
 		// path is now in buffer
 
-		struct file *map_filp = file_open(buffer);
+		map_filp = file_open(buffer);
 		// map file opened?
         if(map_filp == NULL) 
         {
             //path does not exist
             return -ENOENT;
         }
-		// (have to be finished, fill the private data of the file)
-        /*file_read(map_filp, 0, pd->buffer,(size_t)3030);
-        int i = 0;
-        for(; i < 30; i++)
+		// fill the private data of the file with game screen
+        file_read(map_filp, 0, pd->buffer,(size_t)3030);
+        kfree(buffer);
+        file_close(map_filp);
+        /*int i = 0;
+        for(; i < 3030; i++)
         {
-            printk("!!!!!!!!");
-            int j = 0;
-            for(; j < 101; j++)
-            {
-                printk("%c", pd->buffer[i+j]);
-            }
+            printk("%c", pd->buffer[i]);
         }*/
 	break;
     case GAMESTAT:
-	//
-	// handle 
-	//
+        if(pd->buffer[0] == '0') 
+        {
+            return -EINVAL;
+        }
+        unsigned int game_score_and_state = 0;
+        game_score_and_state = pd->points;
+        if(game_is_over(pd))
+        {
+            game_score_and_state |= ((unsigned int)1 << 31);
+        }
+        return game_score_and_state;
 	break;
 
     default:
 	return -ENOTTY;
     }
 
+    /// TODO: free all alocated memory!!!!!
     return 0;
 }
 
-
-void file_close(struct file *file)
-{
-    filp_close(file, NULL);
-}
 
 
