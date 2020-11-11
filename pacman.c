@@ -342,5 +342,78 @@ int my_ioctl(struct inode *inode, struct file *filp, unsigned int cmd, unsigned 
     return 0;
 }
 
+struct loc 
+{
+    int x;
+    int y;
+};
+// returns 0 if moved and -1 if illigal move
+int move(char* buffer, char move)
+{   
+    struct loc player = {-1,-1};
+    struct loc dest = {-1,-1};
+    int player_offset = -1;
+    int dest_offset = -1;
+
+    //find player location:
+    for(int i = 0; i < 3030; i++)
+    {
+        if(buffer[i] == 'x')
+        {
+            player_offset = i;
+            break;
+        }
+    }
+    player.x = player_offset%101;
+    player.y = player_offset/101;
+
+    //determinate dest and check if not out of bounds:
+    switch(move) 
+    {
+    case 'U':
+        if(player.y == 0) //moving out of bound
+            return -1;
+        dest.x = player.x;
+        dest.y = player.y - 1;
+        break;
+    case 'D': 
+        if(player.y == 29)
+            return -1;
+        dest.x = player.x;
+        dest.y = player.y + 1;
+        break;
+    case 'R':
+        if(player.x == 99)
+            return -1;
+        dest.x = player.x + 1;
+        dest.y = player.y;
+        break;
+    case 'L':
+        if(player.x == 0)
+            return -1;
+        dest.x = player.x - 1;
+        dest.y = player.y;
+        break;
+    default:
+        return -1;
+    }
+    dest_offset = dest.y*101 + dest.x;
+
+    // update board:
+    char dest_char = buffer[dest_offset];
+    if(dest_char == '*')
+    {  
+        buffer[dest_offset] = 'x';
+        buffer[player_offset] = ' ';
+    }
+    else if(dest_char == ' ')
+    {   // actualy both if's are the same 
+        buffer[dest_offset] = 'x';
+        buffer[player_offset] = ' ';
+    }
+
+    // else: illigal move
+        return -1;
+}
 
 
