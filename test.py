@@ -79,12 +79,10 @@ def main():
     GAMESTAT = _IOR(MY_MAGIC, 1, 'unsigned long')
        
     MAP_SIZE = 3030
-    print("opening")
     #
     # Open the device file
     #
     f = os.open(DEVICE_PATH, os.O_RDWR)
-    print("open done")
     #
     # Test new game operation
     #
@@ -99,12 +97,16 @@ def main():
     #
     # Test that game and score are correct
     #
+    print(os.read(f,MAP_SIZE))
+    os.write(f,"RRR")
+    print(os.read(f,MAP_SIZE))
     gamestat = struct.unpack('I', fcntl.ioctl(f, GAMESTAT, "    "))[0]
     game_over_bit = 1 << 31
     is_over = bool(gamestat & game_over_bit)
     score = gamestat & ~game_over_bit
+    print(score)
     assert is_over == False
-    assert score == 0
+    assert score == 3
 
 
     #

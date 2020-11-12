@@ -25,14 +25,13 @@
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Anonymous");
 
-
 struct file_operations my_fops = {
     .open = my_open,
     .release = my_release,
     .read = my_read,
+    .write = my_write,
     .ioctl = my_ioctl
 };
-
 
 typedef struct my_private_data {
     char buffer[3030];
@@ -53,10 +52,11 @@ typedef struct minor_list{
 int my_major = 0; /* will hold the major # of my device driver */
 MinorList m_list;
 
+int move(char* buffer, char move);
+bool game_is_over(MyPrivateData pd);
 
 int init_module(void)
 {
-    printk("!!!!!!!!!!!!!!!in init_module\n");
     my_major = register_chrdev(my_major, MY_DEVICE, &my_fops);
 
     if (my_major < 0)
@@ -66,7 +66,6 @@ int init_module(void)
     }
 
     m_list = NULL;
-    printk("!!!!!! m_list is NULL\n");
 
     return 0;
 }
@@ -87,15 +86,12 @@ void cleanup_module(void)
 int my_open(struct inode *inode, struct file *filp)
 {
     // handle open
-    printk("!!!!!!!!!!!!!!in my_open\n");
     int minor = MINOR(inode->i_rdev);
-    printk("!!!!!!!!!!!minor is: %d\n", minor);
 
     //add minor to the list:
     MinorList iter = m_list;
     while(iter != NULL)
     {
-        printk("!!!!!!!! in minor list loop in open\n");
         if(iter->minor == minor)
         {
             // minor already has an open file so we use it's private data with buffer
@@ -131,7 +127,6 @@ int my_open(struct inode *inode, struct file *filp)
     if(new_minor == NULL) {
         return -EFAULT;
     }
-    printk("!!!!!!! got to here\n");
     new_minor->private_data = mpd;
     new_minor->ref_count = 1;
     new_minor->minor = minor;
@@ -145,9 +140,6 @@ int my_open(struct inode *inode, struct file *filp)
     {
         iter->next = new_minor;
     }
-    
-    printk("!!!!!!! Added new private data\n");
-    /// TODO: handle extra errors with return -EFAULT
 
     return 0;
 }
@@ -194,10 +186,55 @@ int my_release(struct inode *inode, struct file *filp)
 
 ssize_t my_read(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 {
-    //
-    // Do read operation.
-    // Return number of bytes read.
-    return 0; 
+    MyPrivateData pd = (MyPrivateData)(filp->private_data);
+    if(pd->buffer[0] == '0') 
+    {
+        return 0;
+    }
+
+    if(count > 3030) 
+    {
+        count = 3030;
+    }
+
+    int success = copy_to_user(buf, pd->buffer, count);
+    if(success != 0) 
+    {
+        return -EBADF;
+    }
+
+    return count; 
+}
+
+ssize_t my_write(struct file *filp, const char *buf, size_t count, loff_t *f_pos)
+{
+    MyPrivateData pd = (MyPrivateData)(filp->private_data);
+    if(pd->buffer[0] == '0') 
+    {
+        return -EINVAL;
+    }
+
+    char* instructions = (char*)kmalloc(count*sizeof(char), GFP_KERNEL);
+    if(instructions == NULL)
+    {
+        return -EFAULT;
+    }
+
+    copy_from_user(instructions, buf, count);
+
+    int i = 0;
+    for(; i < count; i++)
+    {
+        if(game_is_over(pd))
+        {
+            return count;
+        }
+        if(move(pd->buffer, instructions[i]) == 0)
+        {
+            pd->points++;
+        }
+    }
+    return count;
 }
 
 bool game_is_over(MyPrivateData pd) 
@@ -254,10 +291,9 @@ int file_read(struct file *file, unsigned long long offset, unsigned char *data,
     set_fs(oldfs);
     return ret;
 }
+
 struct file *file_open(const char *path)
-{
-    printk("!!!!!!!!!!!!!in file_open\n");
-    
+{   
     struct file *filp = NULL;
     mm_segment_t oldfs;
     int err = 0;
@@ -268,7 +304,6 @@ struct file *file_open(const char *path)
     set_fs(oldfs);
     if (IS_ERR(filp)) {
         err = PTR_ERR(filp);
-        printk("!!!!!! got to here\n");
         return NULL;
     }
     return filp;
@@ -287,7 +322,6 @@ int my_ioctl(struct inode *inode, struct file *filp, unsigned int cmd, unsigned 
     switch(cmd)
     {
     case NEWGAME:
-        //printk("private_data buffer[0] = %c\n", pd->buffer[0]);
         pd->points = 0;
         if(arg == 0) 
         {
@@ -314,24 +348,20 @@ int my_ioctl(struct inode *inode, struct file *filp, unsigned int cmd, unsigned 
         file_read(map_filp, 0, pd->buffer,(size_t)3030);
         kfree(buffer);
         file_close(map_filp);
-        /*int i = 0;
-        for(; i < 3030; i++)
-        {
-            printk("%c", pd->buffer[i]);
-        }*/
 	break;
     case GAMESTAT:
         if(pd->buffer[0] == '0') 
         {
             return -EINVAL;
         }
-        unsigned int game_score_and_state = 0;
+        int game_score_and_state = 0;
         game_score_and_state = pd->points;
         if(game_is_over(pd))
         {
             game_score_and_state |= ((unsigned int)1 << 31);
         }
-        return game_score_and_state;
+        copy_to_user((void*)arg, &game_score_and_state, 4);
+        return 0;
 	break;
 
     default:
@@ -356,7 +386,8 @@ int move(char* buffer, char move)
     int dest_offset = -1;
 
     //find player location:
-    for(int i = 0; i < 3030; i++)
+    int i = 0;
+    for(; i < 3030; i++)
     {
         if(buffer[i] == 'x')
         {
@@ -405,11 +436,13 @@ int move(char* buffer, char move)
     {  
         buffer[dest_offset] = 'x';
         buffer[player_offset] = ' ';
+        return 0;
     }
     else if(dest_char == ' ')
     {   // actualy both if's are the same 
         buffer[dest_offset] = 'x';
         buffer[player_offset] = ' ';
+        return 0;
     }
 
     // else: illigal move
