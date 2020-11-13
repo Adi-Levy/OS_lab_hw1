@@ -6,3 +6,5 @@ rm -f pacman.o
 make
 insmod ./pacman.o
 mknod /dev/pacman c 254 0
+mknod /dev/pacman1 c 254 1
+mknod /dev/pacman2 c 254 2

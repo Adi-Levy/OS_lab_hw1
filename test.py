@@ -10,6 +10,8 @@ import os
 # Globals
 #
 DEVICE_PATH = '/dev/pacman'
+DEVICE_PATH1 = '/dev/pacman1'
+DEVICE_PATH2 = '/dev/pacman2'
 
 #
 # Utilities for calculating the IOCTL command codes.
@@ -156,7 +158,6 @@ def test2_game_is_over():
 
     # take last food on the map:
     os.write(f, "RRRRR")
-    print(os.read(f,MAP_SIZE))
     expected1 = open('./test_map2_expected1').read()
     if expected1 == os.read(f, MAP_SIZE):
         print("->success eating")
@@ -201,26 +202,33 @@ def test3_multipule_games():
     print("****************************************************")
     success = True
 
-    f1 = os.open(DEVICE_PATH, os.O_RDWR)
+    f1 = os.open(DEVICE_PATH1, os.O_RDWR)
     fcntl.ioctl(f1, NEWGAME, os.path.abspath('./test_map1') + '\0')
+    f1_ref = os.open(DEVICE_PATH1, os.O_RDWR)
+    f2 = os.open(DEVICE_PATH2, os.O_RDWR)
+    fcntl.ioctl(f2, NEWGAME, os.path.abspath('./test_map1') + '\0')
 
-    f2 = os.open(DEVICE_PATH, os.O_RDWR)
-    fcntl.ioctl(f2, NEWGAME, os.path.abspath('./test_map2') + '\0')
-
-    # change only f1 - not f2
     os.write(f1, "UUUUU")
+    os.write(f2, "DDDDD")
 
+    print(os.read(f1,MAP_SIZE))
+    print(os.read(f2,MAP_SIZE))
     # check that f1 changed :
-    expected1 = open('./test_map1_expected1').read()
-    expected2 = open('./test_map2').read()
 
-    if expected1 == os.read(f1, MAP_SIZE) and expected2 == os.read(f2, MAP_SIZE):
-        print("->success changing f1 and not f2")
+    if os.read(f2, MAP_SIZE) != os.read(f1, MAP_SIZE):
+        print("->success changing f on proccess 1")
     else:
-        print("->failure changing f1 and not f2")
+        print("->failure changing f on proccess 1")
         success = False
 
+    if os.read(f1_ref, MAP_SIZE) == os.read(f1, MAP_SIZE):
+        print("->success changing f on proccess 1")
+    else:
+        print("->failure changing f on proccess 1")
+        success = False 
+
     os.close(f1)
+    os.close(f1_ref)
     os.close(f2)
 
     if success:

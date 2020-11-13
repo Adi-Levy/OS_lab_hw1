@@ -75,7 +75,6 @@ void cleanup_module(void)
 {
     unregister_chrdev(my_major, MY_DEVICE);
 
-    // TODO: clean up list
     //
     // do clean_up();
     //
@@ -87,7 +86,6 @@ int my_open(struct inode *inode, struct file *filp)
 {
     // handle open
     int minor = MINOR(inode->i_rdev);
-
     //add minor to the list:
     MinorList iter = m_list;
     while(iter != NULL)
