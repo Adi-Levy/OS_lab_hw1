@@ -58,22 +58,139 @@ def _IOC(dir, _type, nr, size):
 
     return cmd_number
 
+
 def _IO(_type, nr):
     return _IOC(_IOC_NONE, _type, nr, 0)
 
+
 def _IOR(_type, nr, size):
     return _IOC(_IOC_READ, _type, nr, sizeof[size])
+
 
 def _IOW(_type, nr, size):
     return _IOC(_IOC_WRITE, _type, nr, sizeof[size])
 
 
+def test1_moving():
+    MY_MAGIC = 'r'
+    NEWGAME = _IOW(MY_MAGIC, 0, 'unsigned long')
+    GAMESTAT = _IOR(MY_MAGIC, 1, 'unsigned long')
+    MAP_SIZE = 3030
+
+    print("****************************************************")
+    print("********************Test1 - moving******************")
+    print("****************************************************")
+    success = True
+
+    f = os.open(DEVICE_PATH, os.O_RDWR)
+    fcntl.ioctl(f, NEWGAME, os.path.abspath('./test_map1') + '\0')
+
+    # move up until hit the wall and try to keep moving:
+    os.write(f, "UUUUUUU")
+    expected1 = open('./test_map1_expected1').read()
+    if expected1 == os.read(f, MAP_SIZE):
+        print("->success trying to move out of bound")
+    else:
+        print("->failure trying to move out of bound")
+        success = False
+
+    # test score count for the last move and make sure game isn't over:
+    gamestat = struct.unpack('I', fcntl.ioctl(f, GAMESTAT, "    "))[0]
+    game_over_bit = 1 << 31
+    is_over = bool(gamestat & game_over_bit)
+    score = gamestat & ~game_over_bit
+    if score == 5:
+        print("->success counting score")
+    else:
+        print("->failure counting score")
+        success = False
+    if not is_over:
+        print("->success checking game is not over")
+    else:
+        print("->failure game over bit should not be 1")
+        success = False
+
+    # some more moves including trying to move into the wall:
+    os.write(f, "DDDDD")
+    os.write(f, "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR")
+    # there are 81 rights but the 81'th one is into the wall
+    expected2 = open('./test_map1_expected2').read()
+    if expected2 == os.read(f, MAP_SIZE):
+        print("->success trying to move into wall")
+    else:
+        print("->failure trying to move into wall")
+        success = False
+
+    # trying to eat the "*" and keep moving on
+    os.write(f, "LLDD")
+    expected3 = open('./test_map1_expected3').read()
+    if expected3 == os.read(f, MAP_SIZE):
+        print("->success trying to eat")
+    else:
+        print("->failure trying to eat")
+        success = False
+
+    os.close(f)
+    if success:
+        print("test 1 passed")
+    else:
+        print("test 1 failed")
+    print("****************************************************")
+    print("*********************Test1 - end********************")
+    print("****************************************************")
+
+
+def test2_game_is_over():
+    MY_MAGIC = 'r'
+    NEWGAME = _IOW(MY_MAGIC, 0, 'unsigned long')
+    GAMESTAT = _IOR(MY_MAGIC, 1, 'unsigned long')
+    MAP_SIZE = 3030
+
+    print("****************************************************")
+    print("******************Test2 - game over*****************")
+    print("****************************************************")
+    success = True
+
+    f = os.open(DEVICE_PATH, os.O_RDWR)
+    fcntl.ioctl(f, NEWGAME, os.path.abspath('./test_map1') + '\0')
+
+    # take last food on the map:
+    os.write(f, "RRR")
+    expected1 = open('./test_map2_expected1').read()
+    if expected1 == os.read(f, MAP_SIZE):
+        print("->success eating")
+    else:
+        print("->failure eating")
+        success = False
+
+    # test score count and game over:
+    gamestat = struct.unpack('I', fcntl.ioctl(f, GAMESTAT, "    "))[0]
+    game_over_bit = 1 << 31
+    is_over = bool(gamestat & game_over_bit)
+    score = gamestat & ~game_over_bit
+    if score == 3:
+        print("->success counting score")
+    else:
+        print("->failure counting score")
+        success = False
+    if is_over:
+        print("->success game over bit")
+    else:
+        print("->failure game should be over")
+        success = False
+
+    os.close(f)
+    if success:
+        print("test 2 passed")
+    else:
+        print("test 2 failed")
+    print("****************************************************")
+    print("*********************Test1 - end********************")
+    print("****************************************************")
+
+
 def main():
     """Test the device driver"""
-    
-    #
-    # Calculate the ioctl cmd number
-    #
     MY_MAGIC = 'r'
     NEWGAME = _IOW(MY_MAGIC, 0, 'unsigned long')
     GAMESTAT = _IOR(MY_MAGIC, 1, 'unsigned long')
@@ -107,14 +224,12 @@ def main():
     print(score)
     assert is_over == False
     assert score == 3
-
-
-    #
     # Finaly close the device file
-    #
     os.close(f)
+
+    test1_moving()
 
     
 if __name__ == '__main__':
     main()
-    
+
