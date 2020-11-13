@@ -190,6 +190,48 @@ def test2_game_is_over():
     print("****************************************************")
 
 
+def test3_multipule_games():
+    MY_MAGIC = 'r'
+    NEWGAME = _IOW(MY_MAGIC, 0, 'unsigned long')
+    GAMESTAT = _IOR(MY_MAGIC, 1, 'unsigned long')
+    MAP_SIZE = 3030
+
+    print("****************************************************")
+    print("******************Test3 - game over*****************")
+    print("****************************************************")
+    success = True
+
+    f1 = os.open(DEVICE_PATH, os.O_RDWR)
+    fcntl.ioctl(f1, NEWGAME, os.path.abspath('./test_map1') + '\0')
+
+    f2 = os.open(DEVICE_PATH, os.O_RDWR)
+    fcntl.ioctl(f2, NEWGAME, os.path.abspath('./test_map2') + '\0')
+
+    # change only f1 - not f2
+    os.write(f1, "UUUUU")
+
+    # check that f1 changed :
+    expected1 = open('./test_map1_expected1').read()
+    expected2 = open('./test_map2').read()
+
+    if expected1 == os.read(f1, MAP_SIZE) and expected2 == os.read(f2, MAP_SIZE):
+        print("->success changing f1 and not f2")
+    else:
+        print("->failure changing f1 and not f2")
+        success = False
+
+    os.close(f1)
+    os.close(f2)
+
+    if success:
+        print("test 3 passed")
+    else:
+        print("test 3 failed")
+    print("****************************************************")
+    print("*********************Test3 - end********************")
+    print("****************************************************")
+
+
 def main():
     """Test the device driver"""
     MY_MAGIC = 'r'
@@ -230,6 +272,7 @@ def main():
 
     test1_moving()
     test2_game_is_over()
+    test3_multipule_games()
 
     
 if __name__ == '__main__':
