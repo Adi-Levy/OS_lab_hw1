@@ -152,10 +152,11 @@ def test2_game_is_over():
     success = True
 
     f = os.open(DEVICE_PATH, os.O_RDWR)
-    fcntl.ioctl(f, NEWGAME, os.path.abspath('./test_map1') + '\0')
+    fcntl.ioctl(f, NEWGAME, os.path.abspath('./test_map2') + '\0')
 
     # take last food on the map:
-    os.write(f, "RRR")
+    os.write(f, "RRRRR")
+    print(os.read(f,MAP_SIZE))
     expected1 = open('./test_map2_expected1').read()
     if expected1 == os.read(f, MAP_SIZE):
         print("->success eating")
@@ -185,7 +186,7 @@ def test2_game_is_over():
     else:
         print("test 2 failed")
     print("****************************************************")
-    print("*********************Test1 - end********************")
+    print("*********************Test2 - end********************")
     print("****************************************************")
 
 
@@ -214,20 +215,21 @@ def main():
     #
     # Test that game and score are correct
     #
-    print(os.read(f,MAP_SIZE))
-    os.write(f,"RRR")
-    print(os.read(f,MAP_SIZE))
+    #print(os.read(f,MAP_SIZE))
+    #os.write(f,"RRR")
+    #print(os.read(f,MAP_SIZE))
     gamestat = struct.unpack('I', fcntl.ioctl(f, GAMESTAT, "    "))[0]
     game_over_bit = 1 << 31
     is_over = bool(gamestat & game_over_bit)
     score = gamestat & ~game_over_bit
     print(score)
     assert is_over == False
-    assert score == 3
+    assert score == 0
     # Finaly close the device file
     os.close(f)
 
     test1_moving()
+    test2_game_is_over()
 
     
 if __name__ == '__main__':
